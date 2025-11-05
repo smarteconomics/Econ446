@@ -1,0 +1,6 @@
+v 3
+d ddplot: Plot dynamic difference-in-differences coefficients with confidence intervals
+d Version 1.0.0 — 05 Nov 2025 — Michael S.
+
+f ddplot.ado
+f ddplot.sthlp
