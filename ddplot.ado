@@ -3,7 +3,7 @@ prog ddplot, rclass
 
 version 15
 	
-	syntax [, treat(varname) year(varname) noLABel rspike XTItle(passthru) YTItle(passthru) TItle(passthru) SUBTItle(passthru)]
+	syntax [, treat(varname) year(varname) noLABel rspike XTItle(passthru) YTItle(passthru) TItle(passthru) SUBTItle(passthru) *]
 
 	// set default names of treat and year variables
 	if "`treat'" == "" local treat treat
@@ -50,9 +50,11 @@ version 15
 	if "`label'"!="nolabel" {
 		label values _dd_year `: value label `year''
 		}
+	// preserve date formats (e.g. %tm) so dates display on the x-axis
+	format _dd_year `: format `year''
 
 	// if xtitle not specified, suppress it entirely
-	if "`xtitle'"=="" local xtitle xtitle("")
+	if `"`xtitle'"'=="" local xtitle xtitle("")
 
 	local cmd ///
 	  twoway ///
@@ -60,11 +62,11 @@ version 15
 	  conn  _dd_b _dd_year, color(black) lwidth(medthick) || ///
 	  , xlab(,valuelabel) xline(`baseline', lpattern(dash) lcolor(gs8)) ///
 	  yline(0, lpattern(solid) lcolor(gs4)) legend(off) ///
-	  `xtitle' `ytitle' `title' `subtitle'
+	  `xtitle' `ytitle' `title' `subtitle' `options'
 
-	di "`cmd'"
+	di `"`cmd'"'
 	`cmd'
-	return local cmd=`"`cmd'"'
+	return local cmd `"`cmd'"'
 	
 	
 end
