@@ -11,7 +11,7 @@ version 15
 
 	// optionally use rspike instead of rarea for CIs
 	local rarea rarea
-	local cicolor color(gs12)
+	local cicolor color(gs14)
 	if "`rspike'"!="" {
 		local rarea rspike
 		local cicolor color(gs4)
@@ -56,12 +56,17 @@ version 15
 	// if xtitle not specified, suppress it entirely
 	if `"`xtitle'"'=="" local xtitle xtitle("")
 
+	// dotted zero line, drawn only over the range of the estimates
+	tempvar zero
+	gen `zero'=0 if _dd_b!=.
+
 	local cmd ///
 	  twoway ///
 	  `rarea' _dd_ub _dd_lb _dd_year , `cicolor' || ///
+	  line `zero' _dd_year, lp(dot) lcolor(gs4) || ///
 	  conn  _dd_b _dd_year, color(black) lwidth(medthick) || ///
 	  , xlab(,valuelabel) xline(`baseline', lpattern(dash) lcolor(gs8)) ///
-	  yline(0, lpattern(solid) lcolor(gs4)) legend(off) ///
+	  legend(off) ///
 	  `xtitle' `ytitle' `title' `subtitle' `options'
 
 	di `"`cmd'"'
