@@ -21,32 +21,26 @@ list ref_date month in 1/3
 list prov category cpi if month == tm(2016m7) & prov == "NB"
 
 keep if category == "All-items"
+drop if inlist(prov, "YT", "NT", "NU")
 count
 
-gen lcpi = 100 * log(cpi)
-label variable lcpi "100 x log CPI"
+twoway line cpi month if prov == "NB", xline(`=tm(2016m7)') title("CPI, New Brunswick") ytitle("CPI (2002 = 100)")
 
-twoway line cpi month if prov == "NB", ///
-    xline(`=tm(2016m7)') title("CPI, New Brunswick") ytitle("CPI (2002 = 100)")
+twoway (line cpi month if prov == "NB") (line cpi month if prov == "NS") if inrange(month, tm(2014m1), tm(2018m12)), xline(`=tm(2016m7)') legend(order(1 "New Brunswick" 2 "Nova Scotia")) ytitle("CPI (2002 = 100)")
 
-twoway (line lcpi month if prov == "NB") (line lcpi month if prov == "NS") ///
-    if inrange(month, tm(2014m1), tm(2018m12)), ///
-    xline(`=tm(2016m7)') legend(order(1 "New Brunswick" 2 "Nova Scotia")) ///
-    ytitle("100 x log CPI")
+separate cpi, by(prov) veryshortlabel
+describe cpi*
 
-twoway line lcpi month if inrange(month, tm(2014m1), tm(2018m12)), ///
-    by(prov) xline(`=tm(2016m7)')
+twoway line cpi1-cpi10 month if inrange(month, tm(2014m1), tm(2018m12)), xline(`=tm(2016m7)') legend(pos(6) cols(5))
 
-bysort prov: egen base = max(cond(month == tm(2016m6), lcpi, .))
-gen rel_lcpi = lcpi - base
+bysort prov: egen base = max(cond(month == tm(2016m6), cpi, .))
+gen rel_cpi = cpi - base
 
 preserve
-keep if inrange(month, tm(2014m1), tm(2018m12)) & !inlist(prov, "NU", "YT", "NT")
+keep if inrange(month, tm(2014m1), tm(2018m12))
 gen nb = (prov == "NB")
-collapse (mean) rel_lcpi, by(nb month)
-twoway (line rel_lcpi month if nb == 1) (line rel_lcpi month if nb == 0), ///
-    xline(`=tm(2016m7)') yline(0) legend(order(1 "New Brunswick" 2 "Other provinces")) ///
-    ytitle("Percent change since June 2016")
+collapse (mean) rel_cpi, by(nb month)
+twoway (line rel_cpi month if nb == 1) (line rel_cpi month if nb == 0), xline(`=tm(2016m7)') yline(0) legend(order(1 "New Brunswick" 2 "Other provinces")) ytitle("Change in CPI since June 2016 (index points)")
 graph export nb-vs-others.png, replace
 restore
 

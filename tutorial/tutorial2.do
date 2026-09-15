@@ -8,7 +8,7 @@ net install ddplot, from("https://raw.githubusercontent.com/smarteconomics/Econ4
 import delimited "https://raw.githubusercontent.com/smarteconomics/Econ446/main/tutorial/cpi-tutorial.csv", clear
 gen month = monthly(ref_date, "YM")
 format month %tm
-gen lcpi = 100 * log(cpi)
+drop if inlist(prov, "YT", "NT", "NU")
 save cpi-categories, replace
 
 keep if category == "All-items"
@@ -20,36 +20,35 @@ gen treat = (prov == "NB")
 gen post  = (month >= tm(2016m7))
 encode prov, gen(id)
 
-table treat post, statistic(mean lcpi) nformat(%9.2f)
+table treat post, statistic(mean cpi) nformat(%9.2f)
 
-reg lcpi i.treat##i.post
+reg cpi i.treat##i.post
 
 gen posttreat = treat * post
-reg lcpi posttreat i.id i.month
+reg cpi posttreat i.id i.month
 
 eststo clear
-eststo: reg lcpi i.treat##i.post
-eststo: reg lcpi posttreat i.id i.month
+eststo: reg cpi i.treat##i.post
+eststo: reg cpi posttreat i.id i.month
 esttab, se keep(1.treat#1.post posttreat) label
 esttab using dd-table.rtf, se keep(1.treat#1.post posttreat) label replace
 
-reg lcpi i.treat##ib`=tm(2016m6)'.month i.id
+reg cpi i.treat##ib`=tm(2016m6)'.month i.id
 
-ddplot, treat(treat) year(month) ytitle("Effect on prices (%)") ///
-    title("New Brunswick HST increase, July 2016")
+ddplot, treat(treat) year(month) ytitle("Effect on CPI (index points)") title("New Brunswick HST increase, July 2016")
 graph export nb-dynamic.png, replace
 
 use cpi-categories, clear
-drop if inlist(prov, "NL", "PE", "SK", "NU")
+drop if inlist(prov, "NL", "PE", "SK")
 keep if inrange(month, tm(2015m7), tm(2017m6))
 gen treat = (prov == "NB")
 gen post  = (month >= tm(2016m7))
 encode prov, gen(id)
 
 foreach c in "All-items" "Goods" "Services" "Food" "Clothing" "Alcohol and tobacco" {
-    quietly reg lcpi i.treat##i.post if category == "`c'"
+    quietly reg cpi i.treat##i.post if category == "`c'"
     display "`c'" _col(25) %6.2f _b[1.treat#1.post]
 }
 
-reg lcpi i.treat##ib`=tm(2016m6)'.month i.id if category == "Alcohol and tobacco"
+reg cpi i.treat##ib`=tm(2016m6)'.month i.id if category == "Alcohol and tobacco"
 ddplot, treat(treat) year(month) title("Alcohol and tobacco prices")

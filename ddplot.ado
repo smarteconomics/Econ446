@@ -22,13 +22,20 @@ version 15
 	for any year b se ub lb : qui gen _dd_X=.
 	local i = 1
 
+	// find the base period from the coefficient names, which mark it with "b"
+	// (e.g. 1o.treat#2019b.year); a zero coefficient is not enough, because
+	// terms omitted for collinearity are also zero
+	tempname eb
+	matrix `eb' = e(b)
+	local names : colnames `eb'
+
 	quietly levelsof `year' if e(sample), local(years)
 	foreach y of local years {
 		capture local b = _b[1.`treat'#`y'.`year']
 		if !_rc {
 			di `i',`y',_b[1.`treat'#`y'.`year']
-			// find the base period as that with a coefficient of zero
-			if `b'==0 {
+			// look only at the treated-group terms (1.treat or 1o.treat)
+			if strpos(" `names' ", " 1.`treat'#`y'b.`year' ") | strpos(" `names' ", " 1o.`treat'#`y'b.`year' ") {
 				di "Found the base year: `y'"
 				local baseline=`y'+0.5
 				}

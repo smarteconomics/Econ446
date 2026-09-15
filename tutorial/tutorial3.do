@@ -1,54 +1,23 @@
-* Stata Tutorial 3: Staggered Adoption, Synthetic Control and Synthetic DD
+* Stata Tutorial 3: Staggered Adoption and Synthetic Control
 * Code from the ECO446 Quercus page of the same name.
 * Generated from tutorial3.md by md2do.py; edit the page, not this file.
 
 ssc install estout, replace
 ssc install synth, replace
-ssc install sdid, replace
 net install ddplot, from("https://raw.githubusercontent.com/smarteconomics/Econ446/main/") replace
 
-clear
-set seed 446
-set obs 50
-gen id = _n
-gen cohort = cond(id <= 20, 2006, cond(id <= 40, 2014, .))   // missing = never treated
-expand 20
-bysort id: gen year = 1999 + _n
-gen post = !missing(cohort) & year >= cohort
-
-* true effect: 1 in the first year of treatment, growing by 0.5 each year
-gen effect = cond(post, 1 + 0.5 * (year - cohort), 0)
-gen y = id / 10 + 0.2 * (year - 2000) + effect + rnormal(0, 0.5)
+import delimited "https://raw.githubusercontent.com/smarteconomics/Econ446/main/tutorial/staggered-sim.csv", clear
+describe
 
 summarize effect if post
 reg y post i.id i.year
 
-local k = 3                                  // window: 3 years before and after
-save simulated, replace
-tempfile stacked
-clear
-save `stacked', emptyok
+reg y post i.id i.year if year < 2014
+reg y post i.id i.year if year >= 2006
 
-foreach r in 2006 2014 {
-    use simulated, clear
-    keep if inrange(year, `r' - `k', `r' + `k')
-    keep if cohort == `r' | missing(cohort) | cohort > `r' + `k'
-    gen event = `r'
-    gen treat = (cohort == `r')
-    gen rel = year - `r' + `k'               // 0, 1, ..., 2k: Stata factor variables cannot be negative
-    append using `stacked'
-    save `stacked', replace
-}
-
-forvalues j = 0/`=2*`k'' {
-    label define rel `j' "`=`j'-`k''", add
-}
-label values rel rel
-tabulate event treat
-
-reg y i.treat##ib`=`k'-1'.rel i.id#i.event i.year#i.event
-ddplot, treat(treat) year(rel) xtitle("Years relative to reform") ///
-    title("Stacked DD, simulated data")
+gen early = (cohort == 2006)
+reg y i.early##ib2005.year i.id if year < 2014
+ddplot, treat(early) year(year) ytitle("Estimated effect") title("Early cohort vs. not-yet-treated late cohort")
 
 clear
 input str2 prov str7 change
@@ -75,7 +44,7 @@ import delimited "https://raw.githubusercontent.com/smarteconomics/Econ446/main/
 keep if category == "All-items"
 gen month = monthly(ref_date, "YM")
 format month %tm
-gen lcpi = 100 * log(cpi)
+drop if inlist(prov, "YT", "NT", "NU")
 encode prov, gen(id)
 save cpi-allitems, replace
 
@@ -112,38 +81,36 @@ forvalues j = 0/`=2*`k'-1' {
 label values rel rel
 tabulate prov event
 
-reg lcpi i.treat##ib`=`k'-1'.rel i.id#i.event i.month#i.event
-ddplot, treat(treat) year(rel) xtitle("Months relative to HST increase") ///
-    ytitle("Effect on prices (%)") title("Stacked DD: four HST increases") ///
-    xlabel(0(3)21, valuelabel)
+reg cpi i.treat##ib11.rel i.id#i.event i.month#i.event
+ddplot, treat(treat) year(rel) xtitle("Months relative to HST increase") ytitle("Effect on CPI (index points)") title("Stacked DD: four HST increases") xlabel(0(3)21, valuelabel)
 graph export stacked-hst.png, replace
 
-use cpi-allitems, clear
-drop if inlist(prov, "NS", "BC", "QC")
-keep if inrange(month, tm(2008m7), tm(2012m6))
-drop id
-encode prov, gen(id)
-gen treat = (prov == "ON")
-gen post = (month >= tm(2010m7))
+import delimited "https://raw.githubusercontent.com/smarteconomics/Econ446/main/tutorial/cpi-tutorial.csv", clear
+keep if category == "Household"
+gen month = monthly(ref_date, "YM")
+format month %tm
+keep if inrange(month, tm(2004m11), tm(2008m10))
+drop if inlist(prov, "YT", "NT", "NU")
+separate cpi, by(prov) veryshortlabel
+twoway line cpi1-cpi10 month, xline(`=tm(2006m11)') legend(pos(6) cols(5)) ytitle("CPI (2002 = 100)")
 
-reg lcpi i.treat##ib`=tm(2010m6)'.month i.id
-ddplot, treat(treat) year(month) ytitle("Effect on prices (%)") ///
-    title("Ontario HST, dynamic DD")
-graph export ontario-dynamic.png, replace
-
-reg lcpi i.treat##i.post
-
-tsset id month
-summarize id if prov == "ON", meanonly
-local on = r(min)
-synth lcpi lcpi(`=tm(2008m7)') lcpi(`=tm(2009m1)') lcpi(`=tm(2009m7)') ///
-    lcpi(`=tm(2010m1)') lcpi(`=tm(2010m6)'), ///
-    trunit(`on') trperiod(`=tm(2010m7)') fig
-
-gen treated = treat * post
-sdid lcpi id month treated, vce(placebo) seed(446) graph
-
-foreach m in did sc sdid {
-    quietly sdid lcpi id month treated, vce(noinference) method(`m')
-    display "`m'" _col(8) %6.2f e(ATT)
+gen treat = (prov == "SK")
+gen post = (month >= tm(2006m11))
+foreach c in AB BC MB ON {
+    quietly reg cpi i.treat##i.post if inlist(prov, "SK", "`c'") & inrange(month, tm(2005m11), tm(2007m10))
+    display "Control group `c':" _col(25) %6.2f _b[1.treat#1.post]
 }
+quietly reg cpi i.treat##i.post if inrange(month, tm(2005m11), tm(2007m10))
+display "All other provinces:" _col(25) %6.2f _b[1.treat#1.post]
+
+encode prov, gen(id)
+tsset id month
+summarize id if prov == "SK", meanonly
+local sk = r(min)
+synth cpi cpi(`=tm(2005m1)') cpi(`=tm(2005m7)') cpi(`=tm(2006m1)') cpi(`=tm(2006m4)') cpi(`=tm(2006m7)') cpi(`=tm(2006m10)'), trunit(`sk') trperiod(`=tm(2006m11)') keep(synth-sk) replace
+
+preserve
+use synth-sk, clear
+format _time %tm
+twoway (line _Y_treated _time) (line _Y_synthetic _time, lpattern(dash)), xline(`=tm(2006m11)') legend(order(1 "Saskatchewan" 2 "Synthetic Saskatchewan") pos(6)) ytitle("CPI (2002 = 100)") xtitle("")
+restore
