@@ -17,10 +17,39 @@ version 15
 		local cicolor color(gs4)
 		}
 	
+	// Is treat() actually in the last estimation?  Without this check a
+	// mismatch - eg looping over top1 top2 but passing treat(top1) to both -
+	// surfaces as "coefficient not found" on the FIRST period, which reads
+	// like a dropped period rather than the wrong variable name.
+	tempname eb
+	cap mat `eb' = e(b)
+	if _rc {
+		di as error "ddplot: no estimation results in memory."
+		exit 301
+		}
+	local enames : colnames `eb'
+	local hit 0
+	local treats
+	foreach n of local enames {
+		if regexm("`n'", "(^|#)[0-9]+\.`treat'($|#)") local hit 1
+		if regexm("`n'", "^[0-9]+\.([A-Za-z_][A-Za-z_0-9]*)#") {
+			local cand = regexs(1)
+			if !strpos(" `treats' ", " `cand' ") local treats `treats' `cand'
+			}
+		}
+	if !`hit' {
+		di as error "ddplot: treat(`treat') is not in the last estimation results."
+		if "`treats'"!="" ///
+			di as error "  the estimated interaction uses: `treats'"
+		di as error "  (check that treat() matches the variable in the regression)"
+		exit 111
+		}
+
 	// save coefficients and CIs as new variables _dd_*
 	qui for any year b se ub lb : cap drop _dd_X
 	qui for any year b se ub lb : gen _dd_X=.
 	local i = 1
+	local nskip = 0
 
 	quietly levelsof `year' if e(sample), local(years)
 	quietly foreach y of local years {
@@ -40,11 +69,22 @@ version 15
 			local ++i
 			}
 		else {
-			di as error "Coefficient _b[1.`treat'#`y'.`year'] not found."
-			di as error "Type 'help ddplot' for syntax help." 
-			exit 111
+			// treat() is in the model (checked above), so a missing period is
+			// a genuinely dropped one - collinear, or empty in e(sample).
+			// Skip it and carry on rather than abandoning the whole plot.
+			noi di as text "  note: no coefficient for period `y'; skipped"
+			local ++nskip
 			}
 		}
+
+	if `i'==1 {
+		di as error "ddplot: no period coefficients found for treat(`treat')."
+		exit 111
+		}
+	if "`nskip'"!="" & `nskip'>0 ///
+		di as text "ddplot: `nskip' period(s) had no coefficient and were skipped"
+	return scalar nskip = cond("`nskip'"=="", 0, `nskip')
+	return scalar nplot = `i'-1
 
 	// preserve year value labels if they exist
 	if "`label'"!="nolabel" {
