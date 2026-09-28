@@ -3,7 +3,7 @@ prog ddplot, rclass
 
 version 15
 	
-	syntax [, treat(varname) year(varname) noLABel rspike XTItle(passthru) YTItle(passthru) TItle(passthru) SUBTItle(passthru) *]
+	syntax [, treat(varname) year(varname) frame(string) replace noLABel rspike XTItle(passthru) YTItle(passthru) TItle(passthru) SUBTItle(passthru) YLABel(passthru) XLABel(string asis) XLABELOPTS(string asis) YSCale(passthru) XSCale(passthru) note(passthru)]
 
 	// set default names of treat and year variables
 	if "`treat'" == "" local treat treat
@@ -11,31 +11,24 @@ version 15
 
 	// optionally use rspike instead of rarea for CIs
 	local rarea rarea
-	local cicolor color(gs14)
+	local cicolor color(gs12)
 	if "`rspike'"!="" {
 		local rarea rspike
 		local cicolor color(gs4)
 		}
 	
 	// save coefficients and CIs as new variables _dd_*
-	for any year b se ub lb : cap drop _dd_X
-	for any year b se ub lb : qui gen _dd_X=.
+	qui for any year b se ub lb : cap drop _dd_X
+	qui for any year b se ub lb : gen _dd_X=.
 	local i = 1
 
-	// find the base period from the coefficient names, which mark it with "b"
-	// (e.g. 1o.treat#2019b.year); a zero coefficient is not enough, because
-	// terms omitted for collinearity are also zero
-	tempname eb
-	matrix `eb' = e(b)
-	local names : colnames `eb'
-
 	quietly levelsof `year' if e(sample), local(years)
-	foreach y of local years {
+	quietly foreach y of local years {
 		capture local b = _b[1.`treat'#`y'.`year']
 		if !_rc {
 			di `i',`y',_b[1.`treat'#`y'.`year']
-			// look only at the treated-group terms (1.treat or 1o.treat)
-			if strpos(" `names' ", " 1.`treat'#`y'b.`year' ") | strpos(" `names' ", " 1o.`treat'#`y'b.`year' ") {
+			// find the base period as that with a coefficient of zero
+			if `b'==0 {
 				di "Found the base year: `y'"
 				local baseline=`y'+0.5
 				}
@@ -57,28 +50,34 @@ version 15
 	if "`label'"!="nolabel" {
 		label values _dd_year `: value label `year''
 		}
-	// preserve date formats (e.g. %tm) so dates display on the x-axis
-	format _dd_year `: format `year''
 
 	// if xtitle not specified, suppress it entirely
-	if `"`xtitle'"'=="" local xtitle xtitle("")
+	if "`xtitle'"=="" local xtitle xtitle("")
 
-	// dotted zero line, drawn only over the range of the estimates
-	tempvar zero
-	gen `zero'=0 if _dd_b!=.
-
+	// optionally save data in a frame
+	if "`frame'"!="" {
+		cap confirm new frame `frame'
+		if _rc & "`replace'"!="replace" {
+			di as error "Frame `frame' already exists; specify replace option also"
+		}
+		else {
+			cap frame drop `frame'
+			frame put _dd* if _dd_year!=., into(`frame')
+			}
+		}	
+	
+	
 	local cmd ///
 	  twoway ///
 	  `rarea' _dd_ub _dd_lb _dd_year , `cicolor' || ///
-	  line `zero' _dd_year, lp(dot) lcolor(gs4) || ///
 	  conn  _dd_b _dd_year, color(black) lwidth(medthick) || ///
-	  , xlab(,valuelabel) xline(`baseline', lpattern(dash) lcolor(gs8)) ///
-	  legend(off) ///
-	  `xtitle' `ytitle' `title' `subtitle' `options'
+	  , xlab(`xlabel', `xlabelopts' valuelabel) xline(`baseline', lpattern(dash) lcolor(gs8)) ///
+	  yline(0, lpattern(solid) lcolor(gs4)) legend(off) ///
+	  `xtitle' `ytitle' `title' `subtitle' `ylabel' `yscale' `xscale' `note'
 
-	di `"`cmd'"'
+	di "`cmd'"
 	`cmd'
-	return local cmd `"`cmd'"'
+	return local cmd=`"`cmd'"'
 	
 	
 end
